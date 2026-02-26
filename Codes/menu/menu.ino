@@ -167,7 +167,7 @@ MenuItem wifiItems[] = {
   { "Back", nullptr, nullptr, 0 } 
 };
 
-// NEW: Time Zone Menu
+// Time Zone Menu
 MenuItem timeZoneItems[] = {
   { "EST (Eastern)", setEST, nullptr, 0 },
   { "CST (Central)", setCST, nullptr, 0 },
@@ -179,7 +179,7 @@ MenuItem timeZoneItems[] = {
 
 MenuItem settingsItems[] = {
   { "WiFi", nullptr, wifiItems, 5 },
-  { "Time Zone", nullptr, timeZoneItems, 6 }, // Replaced "Set Clock"
+  { "Time Zone", nullptr, timeZoneItems, 6 }, 
   { "Brightness", startEditBrightness, nullptr, 0 },
   { "Sensor Test", startSensorTest, nullptr, 0 },
   { "Global Reset", resetGlobal, nullptr, 0 },
@@ -243,27 +243,21 @@ void updateBottomMenu(String line1, String line2) {
   if (line2 != "") { bottomDisplay.setFont(u8g2_font_helvB12_tr); bottomDisplay.setCursor(0, 30); bottomDisplay.print(line2); }
   bottomDisplay.sendBuffer();
 }
+
 String getPreviewTime(int offset) {
   time_t now;
-  time(&now); // Get current UTC (Epoch) time
-  
-  // If time hasn't synced with WiFi yet, return placeholder
+  time(&now); 
   if (now < 100000) return "No WiFi Time"; 
-
-  // Calculate time for the specific zone manually
   time_t local = now + (offset * 3600);
   struct tm* ti = gmtime(&local); 
-
   int h = ti->tm_hour;
   int m = ti->tm_min;
   String ampm = (h < 12) ? " AM" : " PM";
-  
-  h = h % 12;
-  if (h == 0) h = 12;
-
+  h = h % 12; if (h == 0) h = 12;
   String sM = (m < 10) ? "0" + String(m) : String(m);
   return String(h) + ":" + sM + ampm;
 }
+
 void showHoverContext(const char* itemName) {
   String name = String(itemName);
   String valLine = "";
@@ -290,31 +284,17 @@ void showHoverContext(const char* itemName) {
     valLine = (WiFi.status() == WL_CONNECTED) ? "WiFi: ON" : "WiFi: OFF";
   }
   else if (name == "Time Zone") {
-    // Show current system setting
     valLine = "UTC " + String(timeZoneOffset);
   }
-  // --- NEW: TIME ZONE PREVIEWS ---
-  else if (name == "EST (Eastern)") {
-    valLine = getPreviewTime(-5);
-  }
-  else if (name == "CST (Central)") {
-    valLine = getPreviewTime(-6);
-  }
-  else if (name == "MST (Mountain)") {
-    valLine = getPreviewTime(-7);
-  }
-  else if (name == "PST (Pacific)") {
-    valLine = getPreviewTime(-8);
-  }
-  else if (name == "UTC") {
-    valLine = getPreviewTime(0);
-  }
-  // -------------------------------
+  else if (name == "EST (Eastern)") valLine = getPreviewTime(-5);
+  else if (name == "CST (Central)") valLine = getPreviewTime(-6);
+  else if (name == "MST (Mountain)") valLine = getPreviewTime(-7);
+  else if (name == "PST (Pacific)") valLine = getPreviewTime(-8);
+  else if (name == "UTC") valLine = getPreviewTime(0);
   else if (String(itemName).startsWith("Timer")) {
     valLine = timerEnabled ? "Status: ON" : "Status: OFF";
   } 
   else if (name == "Set Clock") {
-    // Legacy clock display
     int h = currentHour % 12; if (h == 0) h = 12;
     String m = (currentMinute < 10) ? "0" + String(currentMinute) : String(currentMinute);
     String ampm = currentHour < 12 ? " AM" : " PM";
@@ -332,9 +312,7 @@ void showHoverContext(const char* itemName) {
 
 void drawWiFiStatus() {
   int x = 110; int y = 2;
-  // Draw Data Icon if recently received Serial Data
   if (millis() - lastSerialRecv < 5000) topDisplay.drawStr(95, 8, "S");
-  
   if (WiFi.status() != WL_CONNECTED) { topDisplay.drawLine(x, y, x + 8, y + 8); topDisplay.drawLine(x + 8, y, x, y + 8); } 
   else { long rssi = WiFi.RSSI(); topDisplay.drawBox(x, y + 6, 2, 2); if (rssi > -75) topDisplay.drawBox(x + 3, y + 3, 2, 5); if (rssi > -55) topDisplay.drawBox(x + 6, y, 2, 8); }
 }
@@ -515,14 +493,59 @@ void enterSubMenu(MenuItem* item) {
   stackDepth++; currentMenu = item->children; currentMenuSize = item->childCount; selectedIndex = 0; menuScrollOffset = 0; uiState = STATE_SUBMENU; lastMenuIdx = -1;
 }
 
+// ==========================================
+// CLOUD SYNC & COMMAND PROCESSING (MERGED)
+// ==========================================
 void syncWithCloud() { if (WiFi.status() != WL_CONNECTED) return; updateBottomMenu("Syncing...", "Fetching Cloud"); sysLog("Cloud sync..."); syncWithCloudSilent(); }
+
 void syncWithCloudSilent() {
   if (WiFi.status() != WL_CONNECTED) return;
   HTTPClient http; http.begin(firebaseURL); int httpCode = http.GET();
+  
   if (httpCode == 200) {
     String payload = http.getString(); DynamicJsonDocument doc(2048); deserializeJson(doc, payload);
     bool changed = false;
 
+    // --- 1. HANDLE REMOTE COMMANDS (PRIORITY) ---
+    
+    // Reboot Command
+    if (doc.containsKey("reboot_cmd") && doc["reboot_cmd"].as<bool>() == true) {
+      sysLog("Cloud Restart Command Received! Rebooting...");
+      updateBottomMenu("REMOTE REBOOT", "PLEASE WAIT");
+      HTTPClient patchHttp; patchHttp.begin(firebaseURL); patchHttp.addHeader("Content-Type", "application/json");
+      patchHttp.sendRequest("PATCH", "{\"reboot_cmd\":false}"); patchHttp.end();
+      delay(1000); ESP.restart();
+    }
+
+    // Fetch Logs Command
+    if (doc.containsKey("fetch_logs_cmd") && doc["fetch_logs_cmd"].as<bool>() == true) {
+      sysLog("Web Dashboard requested log dump.");
+      DynamicJsonDocument logDoc(2048);
+      logDoc["fetch_logs_cmd"] = false;
+      logDoc["system_logs"] = webLogBuffer;
+      String logJson; serializeJson(logDoc, logJson);
+      HTTPClient patchHttp; patchHttp.begin(firebaseURL); patchHttp.addHeader("Content-Type", "application/json");
+      patchHttp.sendRequest("PATCH", logJson); patchHttp.end();
+    }
+
+    // Global Reset Command
+    if (doc.containsKey("global_reset_cmd") && doc["global_reset_cmd"].as<bool>() == true) {
+      sysLog("Web Command: Global Reset Initiated.");
+      updateBottomMenu("GLOBAL RESET", "PLEASE WAIT");
+      resetGlobal();
+      HTTPClient patchHttp; patchHttp.begin(firebaseURL); patchHttp.addHeader("Content-Type", "application/json");
+      patchHttp.sendRequest("PATCH", "{\"global_reset_cmd\":false}"); patchHttp.end();
+    }
+
+    // Sensor Test Command
+    if (doc.containsKey("sensor_test_cmd") && doc["sensor_test_cmd"].as<bool>() == true) {
+      sysLog("Web Command: Sensor Test Display.");
+      uiState = STATE_SENSOR_TEST;
+      HTTPClient patchHttp; patchHttp.begin(firebaseURL); patchHttp.addHeader("Content-Type", "application/json");
+      patchHttp.sendRequest("PATCH", "{\"sensor_test_cmd\":false}"); patchHttp.end();
+    }
+
+    // --- 2. HANDLE SETTINGS SYNC ---
     if (doc.containsKey("tempLow") && tempLow != doc["tempLow"].as<float>()) { tempLow = doc["tempLow"]; changed = true; }
     if (doc.containsKey("tempHigh") && tempHigh != doc["tempHigh"].as<float>()) { tempHigh = doc["tempHigh"]; changed = true; }
     if (doc.containsKey("humLow") && humLow != doc["humLow"].as<float>()) { humLow = doc["humLow"]; changed = true; }
@@ -533,7 +556,7 @@ void syncWithCloudSilent() {
     if (doc.containsKey("luxThreshold") && luxThreshold != doc["luxThreshold"].as<long>()) { luxThreshold = doc["luxThreshold"]; changed = true; }
     if (doc.containsKey("timerEnabled") && timerEnabled != doc["timerEnabled"].as<bool>()) { timerEnabled = doc["timerEnabled"]; changed = true; }
     
-    // NEW: Sync TimeZone
+    // TimeZone Sync
     if (doc.containsKey("timeZoneOffset") && timeZoneOffset != doc["timeZoneOffset"].as<int>()) { 
       timeZoneOffset = doc["timeZoneOffset"]; 
       configTime(timeZoneOffset * 3600, 0, "pool.ntp.org", "time.nist.gov");
@@ -562,7 +585,7 @@ void pushToCloud() {
   doc["timeOnHour"] = timeOnHour; 
   doc["luxThreshold"] = luxThreshold; 
   doc["timerEnabled"] = timerEnabled;
-  doc["timeZoneOffset"] = timeZoneOffset; // Push Timezone
+  doc["timeZoneOffset"] = timeZoneOffset;
   
   String jsonOutput; serializeJson(doc, jsonOutput); int httpCode = http.sendRequest("PATCH", jsonOutput);
   if (httpCode > 0) updateBottomMenu("Cloud Update", "Successful!"); else updateBottomMenu("Cloud Error", String(httpCode));
