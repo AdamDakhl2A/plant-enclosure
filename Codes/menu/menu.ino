@@ -758,8 +758,20 @@ void loop() {
       for (int i = 0; i < currentMenuSize; i++) {
         if (i >= menuScrollOffset && i < menuScrollOffset + VISIBLE_ITEMS) {
           int y = 28 + ((i - menuScrollOffset) * 12);
-          if (i == selectedIndex) { topDisplay.setFont(u8g2_font_7x14B_tf); topDisplay.drawStr(0, y, ">"); topDisplay.drawStr(10, y, currentMenu[i].name); }
-          else { topDisplay.setFont(u8g2_font_6x10_tf); topDisplay.drawStr(10, y, currentMenu[i].name); }
+          
+          // --- FIXED: Dynamic Timer Label Logic ---
+          String label = currentMenu[i].name;
+          if (label.startsWith("Timer")) label = timerEnabled ? "Timer: ON" : "Timer: OFF";
+
+          if (i == selectedIndex) { 
+            topDisplay.setFont(u8g2_font_7x14B_tf); 
+            topDisplay.drawStr(0, y, ">"); 
+            topDisplay.drawStr(10, y, label.c_str()); 
+          }
+          else { 
+            topDisplay.setFont(u8g2_font_6x10_tf); 
+            topDisplay.drawStr(10, y, label.c_str()); 
+          }
         }
       }
       topDisplay.sendBuffer();
