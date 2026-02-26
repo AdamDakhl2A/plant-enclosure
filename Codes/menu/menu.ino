@@ -554,8 +554,11 @@ void syncWithCloudSilent() {
     if (doc.containsKey("soilHigh") && soilHigh != doc["soilHigh"].as<float>()) { soilHigh = doc["soilHigh"]; changed = true; }
     if (doc.containsKey("timeOnHour") && timeOnHour != doc["timeOnHour"].as<int>()) { timeOnHour = doc["timeOnHour"]; changed = true; }
     if (doc.containsKey("timeOffHour") && timeOffHour != doc["timeOffHour"].as<int>()) { timeOffHour = doc["timeOffHour"]; changed = true; }
+    
+    // --- FIXED: ADDED MINUTE SYNC HERE ---
     if (doc.containsKey("timeOnMinute") && timeOnMinute != doc["timeOnMinute"].as<int>()) { timeOnMinute = doc["timeOnMinute"]; changed = true; }
     if (doc.containsKey("timeOffMinute") && timeOffMinute != doc["timeOffMinute"].as<int>()) { timeOffMinute = doc["timeOffMinute"]; changed = true; }
+    // ------------------------------------
 
     if (doc.containsKey("luxThreshold") && luxThreshold != doc["luxThreshold"].as<long>()) { luxThreshold = doc["luxThreshold"]; changed = true; }
     if (doc.containsKey("timerEnabled") && timerEnabled != doc["timerEnabled"].as<bool>()) { timerEnabled = doc["timerEnabled"]; changed = true; }
@@ -567,7 +570,7 @@ void syncWithCloudSilent() {
       changed = true; 
     }
 
-    // Brightness Sync (FIXED)
+    // Brightness Sync
     if (doc.containsKey("globalBrightness") && globalBrightness != doc["globalBrightness"].as<int>()) { 
       globalBrightness = doc["globalBrightness"]; 
       applyBrightness(globalBrightness); 
@@ -594,13 +597,17 @@ void pushToCloud() {
   doc["humLow"] = humLow; doc["humHigh"] = humHigh; 
   doc["soilLow"] = soilLow; doc["soilHigh"] = soilHigh; 
   doc["timeOnHour"] = timeOnHour; 
-  doc["timeOffHour"] = timeOffHour; // FIXED
+  doc["timeOffHour"] = timeOffHour;
+  
+  // --- FIXED: ADDED MINUTE SYNC HERE ---
   doc["timeOnMinute"] = timeOnMinute;
   doc["timeOffMinute"] = timeOffMinute;
+  // -------------------------------------
+
   doc["luxThreshold"] = luxThreshold; 
   doc["timerEnabled"] = timerEnabled;
   doc["timeZoneOffset"] = timeZoneOffset;
-  doc["globalBrightness"] = globalBrightness; // FIXED
+  doc["globalBrightness"] = globalBrightness;
   
   String jsonOutput; serializeJson(doc, jsonOutput); int httpCode = http.sendRequest("PATCH", jsonOutput);
   if (httpCode > 0) updateBottomMenu("Cloud Update", "Successful!"); else updateBottomMenu("Cloud Error", String(httpCode));
