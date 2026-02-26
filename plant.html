@@ -34,10 +34,16 @@
       .slide-out-left { transform: translateX(-100px); opacity: 0; filter: blur(10px); }
       .slide-out-right { transform: translateX(100px); opacity: 0; filter: blur(10px); }
 
-      @media (max-width: 1024px){ 
+@media (max-width: 1024px){ 
         .wrap{ 
-           grid-template-columns: 1fr; /* Force 1 simple column */
+           /* !important forces the browser to obey this rule over everything else */
+           grid-template-columns: 100% !important; 
+           display: flex !important;
+           flex-direction: column;
         } 
+        
+        /* Debugging background - remove this later! */
+        body { background: #333 !important; }
       }
       
       .card{ background: var(--card); border: 1px solid var(--stroke); border-radius: var(--radius); box-shadow: var(--shadow); overflow:hidden; backdrop-filter: blur(10px); }
